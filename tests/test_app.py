@@ -5,7 +5,9 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from app import descriptive_stats, load_series, metrics, train_test_split_series
+from src.data import load_series
+from src.evaluation import metrics, moving_average_forecast, naive_forecast
+from src.preprocessing import descriptive_stats, train_test_split_series
 
 
 class AnalysisHelpersTest(unittest.TestCase):
@@ -59,6 +61,24 @@ class AnalysisHelpersTest(unittest.TestCase):
         self.assertAlmostEqual(result["RMSE"], 1.0)
         self.assertAlmostEqual(result["MAE"], 1.0)
         self.assertTrue(np.isfinite(result["Theil_U2"]))
+
+    def test_naive_forecast_repeats_last_train_value(self) -> None:
+        train = pd.Series([1.0, 2.0, 3.0], index=pd.date_range("2020-01-01", periods=3, freq="MS"))
+        test = pd.Series([4.0, 5.0], index=pd.date_range("2020-04-01", periods=2, freq="MS"))
+
+        forecast = naive_forecast(train, test)
+
+        self.assertEqual(forecast.tolist(), [3.0, 3.0])
+        self.assertTrue(forecast.index.equals(test.index))
+
+    def test_moving_average_forecast_uses_trailing_train_window(self) -> None:
+        train = pd.Series([1.0, 2.0, 3.0, 4.0], index=pd.date_range("2020-01-01", periods=4, freq="MS"))
+        test = pd.Series([5.0, 6.0], index=pd.date_range("2020-05-01", periods=2, freq="MS"))
+
+        forecast = moving_average_forecast(train, test, window=2)
+
+        self.assertEqual(forecast.tolist(), [3.5, 3.5])
+        self.assertTrue(forecast.index.equals(test.index))
 
 
 if __name__ == "__main__":
