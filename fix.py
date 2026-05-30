@@ -1,31 +1,58 @@
+"""Normalize malformed INDPRO CSV exports.
+
+This utility is kept for reproducibility in case the source file is downloaded
+as a single comma-separated text column. The main analysis uses INDPRO.csv
+directly and does not require this step when the CSV already has two columns.
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
 import pandas as pd
 
-# путь к исходному файлу
-input_path = "INDPRO.csv"
 
-# читаем файл как ОДИН столбец
-df_raw = pd.read_csv(input_path, header=None)
+def clean_indpro_csv(input_path: Path, output_path: Path) -> pd.DataFrame:
+    """Convert a one-column malformed CSV into date/value columns."""
+    raw = pd.read_csv(input_path, header=None)
 
-# разбиваем строку по запятой
-df_split = df_raw[0].str.split(",", expand=True)
+    if raw.shape[1] == 1:
+        split = raw.iloc[:, 0].astype(str).str.split(",", expand=True)
+    else:
+        split = raw.iloc[:, :2].copy()
 
-# если в первой строке заголовки
-if df_split.iloc[0, 0] == "observation_date":
-    df_split.columns = ["date", "value"]
-    df_split = df_split.iloc[1:]
-else:
-    df_split.columns = ["date", "value"]
+    split.columns = ["observation_date", "INDPRO"]
+    if split.iloc[0, 0] == "observation_date":
+        split = split.iloc[1:]
 
-# приводим типы
-df_split["date"] = pd.to_datetime(df_split["date"])
-df_split["value"] = pd.to_numeric(df_split["value"], errors="coerce")
+    split["observation_date"] = pd.to_datetime(split["observation_date"], errors="coerce")
+    split["INDPRO"] = pd.to_numeric(split["INDPRO"], errors="coerce")
+    split = split.dropna(subset=["observation_date", "INDPRO"])
+    split = split.sort_values("observation_date").reset_index(drop=True)
 
-# сортировка и сброс индекса
-df_split = df_split.sort_values("date").reset_index(drop=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    split.to_csv(output_path, index=False)
+    return split
 
-# сохраняем исправленный файл
-output_path = "INDPRO_clean.csv"
-df_split.to_csv(output_path, index=False)
 
-print("Файл успешно исправлен и сохранён как:", output_path)
-print(df_split.head())
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Clean a malformed INDPRO CSV export.")
+    parser.add_argument("--input", type=Path, default=Path("INDPRO.csv"), help="Source CSV path.")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("INDPRO_clean.csv"),
+        help="Cleaned CSV output path.",
+    )
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    cleaned = clean_indpro_csv(args.input, args.output)
+    print(f"Saved {len(cleaned)} rows to {args.output}")
+
+
+if __name__ == "__main__":
+    main()
